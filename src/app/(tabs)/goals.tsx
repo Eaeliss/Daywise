@@ -157,6 +157,7 @@ export default function GoalsScreen() {
                       textColor={theme.text}
                       secondaryColor={theme.textSecondary}
                       accentColor='#3b82f6'
+                      language={language}
                       onToggle={(id) => { hapticLight(); toggleGoal(id) }}
                       onRemove={handleRemoveGoal}
                       onEdit={() => openEdit(goal)}
@@ -192,6 +193,7 @@ export default function GoalsScreen() {
                       textColor={theme.textSecondary}
                       secondaryColor={theme.textSecondary}
                       accentColor='#22c55e'
+                      language={language}
                       onToggle={(id) => { hapticLight(); toggleGoal(id) }}
                       onRemove={handleRemoveGoal}
                       onEdit={() => openEdit(goal)}
@@ -405,6 +407,7 @@ type RowProps = {
   goal: Goal
   isLast: boolean
   today: string
+  language: string
   separatorColor: string
   textColor: string
   secondaryColor: string
@@ -424,7 +427,7 @@ type RowProps = {
 }
 
 function GoalRow({
-  goal, isLast, today, separatorColor, textColor, secondaryColor, accentColor, backgroundEl,
+  goal, isLast, today, language, separatorColor, textColor, secondaryColor, accentColor, backgroundEl,
   onToggle, onRemove, onEdit, onUpdateProgress,
   addingMilestoneForId, milestoneInput, onSetAddingMilestone, onMilestoneInputChange,
   onAddMilestone, onToggleMilestone, onRemoveMilestone,
