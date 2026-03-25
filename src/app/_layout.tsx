@@ -44,7 +44,6 @@ function RootLayout() {
   // Route based on auth state — deps include segments (no stale closure) and initialized (no premature redirect)
   useEffect(() => {
     if (!initialized) return
-    if (!segments.length) return // Expo Router hasn't resolved the initial route yet
 
     const inAuthGroup = segments[0] === 'auth'
     const inOnboarding = segments[0] === 'onboarding'
