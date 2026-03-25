@@ -56,6 +56,8 @@ function RootLayout() {
       return
     }
 
+    const atRoot = segments.length === 0
+
     if (!session && !inAuthGroup) {
       router.replace('/auth/sign-in')
     } else if (session && inAuthGroup) {
@@ -63,6 +65,8 @@ function RootLayout() {
       else router.replace('/(tabs)/dashboard')
     } else if (session && !inOnboarding && !onboardingCompleted) {
       router.replace('/onboarding')
+    } else if (session && onboardingCompleted && atRoot) {
+      router.replace('/(tabs)/dashboard')
     }
   }, [session, initialized, segments, isPasswordRecovery])
 
