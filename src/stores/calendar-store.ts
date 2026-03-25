@@ -1,7 +1,5 @@
 import { create } from 'zustand'
-import { createStorage } from '@/lib/storage'
-
-const storage = createStorage('calendar')
+import { supabase } from '@/lib/supabase'
 
 export type CalendarEvent = {
   id: string
@@ -12,48 +10,61 @@ export type CalendarEvent = {
 
 type CalendarState = {
   events: CalendarEvent[]
+  userId: string | null
+  init: (userId: string) => Promise<void>
   addEvent: (title: string, date: string, time: string) => void
   updateEvent: (id: string, title: string, time: string) => void
   removeEvent: (id: string) => void
 }
 
-function loadEvents(): CalendarEvent[] {
-  const raw = storage.getString('events')
-  if (!raw) return []
-  try {
-    const parsed = JSON.parse(raw)
-    return parsed.map((e: CalendarEvent & { time?: string }) => ({
-      ...e,
-      time: e.time ?? '',
-    }))
-  } catch { return [] }
-}
-
-function saveEvents(events: CalendarEvent[]) {
-  storage.set('events', JSON.stringify(events))
+function makeId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2)
 }
 
 export const useCalendarStore = create<CalendarState>((set, get) => ({
-  events: loadEvents(),
+  events: [],
+  userId: null,
+
+  init: async (userId) => {
+    set({ userId })
+    const { data } = await supabase
+      .from('calendar_events')
+      .select('*')
+      .eq('user_id', userId)
+    if (data) {
+      set({
+        events: data.map((e) => ({
+          id: e.id,
+          title: e.title,
+          date: e.date,
+          time: e.time ?? '',
+        })),
+      })
+    }
+  },
 
   addEvent: (title, date, time) => {
-    const id = Date.now().toString(36) + Math.random().toString(36).slice(2)
-    const events = [...get().events, { id, title, date, time }]
-    saveEvents(events)
-    set({ events })
+    const { userId } = get()
+    const id = makeId()
+    set({ events: [...get().events, { id, title, date, time }] })
+    if (userId) {
+      supabase.from('calendar_events').insert({ id, user_id: userId, title, date, time }).then()
+    }
   },
 
   updateEvent: (id, title, time) => {
-    const events = get().events.map((e) => e.id === id ? { ...e, title, time } : e)
-    saveEvents(events)
-    set({ events })
+    const { userId } = get()
+    set({ events: get().events.map((e) => e.id === id ? { ...e, title, time } : e) })
+    if (userId) {
+      supabase.from('calendar_events').update({ title, time }).eq('id', id).then()
+    }
   },
 
   removeEvent: (id) => {
-    const current = get().events
-    const events = current.filter((e) => e.id !== id)
-    if (events.length === current.length) return
-    saveEvents(events)
-    set({ events })
+    const { userId } = get()
+    set({ events: get().events.filter((e) => e.id !== id) })
+    if (userId) {
+      supabase.from('calendar_events').delete().eq('id', id).then()
+    }
   },
 }))

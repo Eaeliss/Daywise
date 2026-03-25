@@ -1,7 +1,5 @@
 import { create } from 'zustand'
-import { createStorage } from '@/lib/storage'
-
-const storage = createStorage('finances')
+import { supabase } from '@/lib/supabase'
 
 export type TransactionType = 'income' | 'expense'
 export type BudgetMode = 'percentage' | 'fixed'
@@ -23,7 +21,6 @@ export type RecurringTransaction = {
   type: TransactionType
   category: string
   frequency: RecurringFrequency
-  // lastApplied: 'YYYY-MM' for monthly, 'YYYY-WW' for weekly, '' if never
   lastApplied: string
 }
 
@@ -34,6 +31,8 @@ type FinancesState = {
   budgetMode: BudgetMode
   budgetPercent: number
   budgetFixed: number
+  userId: string | null
+  init: (userId: string) => Promise<void>
   addTransaction: (title: string, amount: number, type: TransactionType, category: string, date: string) => void
   removeTransaction: (id: string) => void
   updateTransaction: (id: string, title: string, amount: number, type: TransactionType, category: string, date: string) => void
@@ -44,30 +43,8 @@ type FinancesState = {
   setBudget: (monthlyIncome: number, mode: BudgetMode, percent: number, fixed: number) => void
 }
 
-function loadTransactions(): Transaction[] {
-  const raw = storage.getString('transactions')
-  if (!raw) return []
-  try {
-    const parsed = JSON.parse(raw)
-    return parsed.map((t: Transaction & { category?: string }) => ({
-      ...t,
-      category: t.category ?? 'Other',
-    }))
-  } catch { return [] }
-}
-
-function loadRecurring(): RecurringTransaction[] {
-  const raw = storage.getString('recurring')
-  if (!raw) return []
-  try { return JSON.parse(raw) } catch { return [] }
-}
-
-function saveTransactions(transactions: Transaction[]) {
-  storage.set('transactions', JSON.stringify(transactions))
-}
-
-function saveRecurring(recurring: RecurringTransaction[]) {
-  storage.set('recurring', JSON.stringify(recurring))
+function makeId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2)
 }
 
 function getMonthKey(date: Date): string {
@@ -75,7 +52,6 @@ function getMonthKey(date: Date): string {
 }
 
 function getWeekKey(date: Date): string {
-  // ISO week: Monday-based
   const d = new Date(date)
   d.setHours(0, 0, 0, 0)
   d.setDate(d.getDate() + 4 - (d.getDay() || 7))
@@ -88,61 +64,103 @@ function todayString(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function makeId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2)
-}
-
 export const useFinancesStore = create<FinancesState>((set, get) => ({
-  transactions: loadTransactions(),
-  recurringTransactions: loadRecurring(),
-  monthlyIncome: storage.getNumber('monthlyIncome') ?? 0,
-  budgetMode: (storage.getString('budgetMode') as BudgetMode) ?? 'percentage',
-  budgetPercent: storage.getNumber('budgetPercent') ?? 80,
-  budgetFixed: storage.getNumber('budgetFixed') ?? 0,
+  transactions: [],
+  recurringTransactions: [],
+  monthlyIncome: 0,
+  budgetMode: 'percentage',
+  budgetPercent: 80,
+  budgetFixed: 0,
+  userId: null,
+
+  init: async (userId) => {
+    set({ userId })
+    const [txRes, rxRes, budgetRes] = await Promise.all([
+      supabase.from('transactions').select('*').eq('user_id', userId),
+      supabase.from('recurring_transactions').select('*').eq('user_id', userId),
+      supabase.from('budget_settings').select('*').eq('user_id', userId).maybeSingle(),
+    ])
+    const transactions: Transaction[] = (txRes.data ?? []).map((t) => ({
+      id: t.id,
+      title: t.title,
+      amount: t.amount,
+      type: t.type as TransactionType,
+      category: t.category ?? 'Other',
+      date: t.date,
+    }))
+    const recurringTransactions: RecurringTransaction[] = (rxRes.data ?? []).map((r) => ({
+      id: r.id,
+      title: r.title,
+      amount: r.amount,
+      type: r.type as TransactionType,
+      category: r.category ?? 'Other',
+      frequency: r.frequency as RecurringFrequency,
+      lastApplied: r.last_applied ?? '',
+    }))
+    const budget = budgetRes.data
+    set({
+      transactions,
+      recurringTransactions,
+      ...(budget ? {
+        monthlyIncome: budget.monthly_income ?? 0,
+        budgetMode: (budget.budget_mode as BudgetMode) ?? 'percentage',
+        budgetPercent: budget.budget_percent ?? 80,
+        budgetFixed: budget.budget_fixed ?? 0,
+      } : {}),
+    })
+  },
 
   addTransaction: (title, amount, type, category, date) => {
-    const transactions = [...get().transactions, { id: makeId(), title, amount, type, category, date }]
-    saveTransactions(transactions)
-    set({ transactions })
+    const { userId } = get()
+    const id = makeId()
+    set({ transactions: [...get().transactions, { id, title, amount, type, category, date }] })
+    if (userId) {
+      supabase.from('transactions').insert({ id, user_id: userId, title, amount, type, category, date }).then()
+    }
   },
 
   removeTransaction: (id) => {
-    const current = get().transactions
-    const transactions = current.filter((t) => t.id !== id)
-    if (transactions.length === current.length) return
-    saveTransactions(transactions)
-    set({ transactions })
+    const { userId } = get()
+    set({ transactions: get().transactions.filter((t) => t.id !== id) })
+    if (userId) supabase.from('transactions').delete().eq('id', id).then()
   },
 
   updateTransaction: (id, title, amount, type, category, date) => {
-    const transactions = get().transactions.map((t) =>
-      t.id === id ? { ...t, title, amount, type, category, date } : t
-    )
-    saveTransactions(transactions)
-    set({ transactions })
+    const { userId } = get()
+    set({ transactions: get().transactions.map((t) => t.id === id ? { ...t, title, amount, type, category, date } : t) })
+    if (userId) supabase.from('transactions').update({ title, amount, type, category, date }).eq('id', id).then()
   },
 
   addRecurring: (title, amount, type, category, frequency) => {
-    const recurring = [...get().recurringTransactions, { id: makeId(), title, amount, type, category, frequency, lastApplied: '' }]
-    saveRecurring(recurring)
-    set({ recurringTransactions: recurring })
+    const { userId } = get()
+    const id = makeId()
+    const r: RecurringTransaction = { id, title, amount, type, category, frequency, lastApplied: '' }
+    set({ recurringTransactions: [...get().recurringTransactions, r] })
+    if (userId) {
+      supabase.from('recurring_transactions').insert({
+        id, user_id: userId, title, amount, type, category, frequency, last_applied: '',
+      }).then()
+    }
   },
 
   removeRecurring: (id) => {
-    const recurring = get().recurringTransactions.filter((r) => r.id !== id)
-    saveRecurring(recurring)
-    set({ recurringTransactions: recurring })
+    const { userId } = get()
+    set({ recurringTransactions: get().recurringTransactions.filter((r) => r.id !== id) })
+    if (userId) supabase.from('recurring_transactions').delete().eq('id', id).then()
   },
 
   updateRecurring: (id, title, amount, type, category, frequency) => {
-    const recurringTransactions = get().recurringTransactions.map((r) =>
-      r.id === id ? { ...r, title, amount, type, category, frequency } : r
-    )
-    saveRecurring(recurringTransactions)
-    set({ recurringTransactions })
+    const { userId } = get()
+    set({
+      recurringTransactions: get().recurringTransactions.map((r) =>
+        r.id === id ? { ...r, title, amount, type, category, frequency } : r
+      ),
+    })
+    if (userId) supabase.from('recurring_transactions').update({ title, amount, type, category, frequency }).eq('id', id).then()
   },
 
   applyDueRecurring: () => {
+    const { userId } = get()
     const now = new Date()
     const monthKey = getMonthKey(now)
     const weekKey = getWeekKey(now)
@@ -150,28 +168,47 @@ export const useFinancesStore = create<FinancesState>((set, get) => ({
 
     const { recurringTransactions, transactions } = get()
     let newTransactions = [...transactions]
+    const toInsert: Transaction[] = []
     let changed = false
 
     const updatedRecurring = recurringTransactions.map((r) => {
       const key = r.frequency === 'monthly' ? monthKey : weekKey
       if (r.lastApplied === key) return r
-      // Due — apply it
-      newTransactions = [...newTransactions, { id: makeId(), title: r.title, amount: r.amount, type: r.type, category: r.category, date: today }]
+      const id = makeId()
+      const tx: Transaction = { id, title: r.title, amount: r.amount, type: r.type, category: r.category, date: today }
+      newTransactions = [...newTransactions, tx]
+      toInsert.push(tx)
       changed = true
       return { ...r, lastApplied: key }
     })
 
     if (!changed) return
-    saveTransactions(newTransactions)
-    saveRecurring(updatedRecurring)
     set({ transactions: newTransactions, recurringTransactions: updatedRecurring })
+
+    if (userId) {
+      if (toInsert.length > 0) {
+        supabase.from('transactions').insert(toInsert.map((t) => ({ ...t, user_id: userId }))).then()
+      }
+      for (const r of updatedRecurring) {
+        const orig = recurringTransactions.find((o) => o.id === r.id)
+        if (orig && orig.lastApplied !== r.lastApplied) {
+          supabase.from('recurring_transactions').update({ last_applied: r.lastApplied }).eq('id', r.id).then()
+        }
+      }
+    }
   },
 
   setBudget: (monthlyIncome, mode, percent, fixed) => {
-    storage.set('monthlyIncome', monthlyIncome)
-    storage.set('budgetMode', mode)
-    storage.set('budgetPercent', percent)
-    storage.set('budgetFixed', fixed)
+    const { userId } = get()
     set({ monthlyIncome, budgetMode: mode, budgetPercent: percent, budgetFixed: fixed })
+    if (userId) {
+      supabase.from('budget_settings').upsert({
+        user_id: userId,
+        monthly_income: monthlyIncome,
+        budget_mode: mode,
+        budget_percent: percent,
+        budget_fixed: fixed,
+      }).then()
+    }
   },
 }))

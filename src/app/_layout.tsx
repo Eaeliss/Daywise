@@ -7,6 +7,7 @@ import React, { useEffect } from 'react'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { useAuth } from '@/hooks/use-auth'
 import { useDeepLink } from '@/hooks/use-deep-link'
+import { useInitStores } from '@/hooks/use-init-stores'
 import { queryClient } from '@/lib/query-client'
 import { initSentry, Sentry } from '@/lib/sentry'
 import { useOnboardingStore } from '@/stores/onboarding-store'
@@ -20,6 +21,7 @@ function RootLayout() {
   const { session, initialized, isPasswordRecovery } = useAuth()
   const onboardingCompleted = useOnboardingStore((s) => s.completed)
   useDeepLink()
+  useInitStores(session?.user.id ?? null)
 
   // Navigate to the relevant screen when the user taps a push notification
   useEffect(() => {
