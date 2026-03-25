@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Text, TextInput, View } from 'react-native'
+import { Platform, Text, TextInput, View } from 'react-native'
 import { useTheme } from '@/hooks/use-theme'
 
 type Props = {
@@ -11,7 +11,6 @@ type Props = {
 function parseValue(value: string) {
   if (!value) return { y: '', m: '', d: '' }
   const [y = '', m = '', d = ''] = value.split('-')
-  // Strip leading zeros for display so "03" shows as "3" while typing
   return {
     y,
     m: m ? String(parseInt(m, 10)) : '',
@@ -29,8 +28,31 @@ function isValid(y: string, m: string, d: string): boolean {
   return date.getFullYear() === yn && date.getMonth() === mn - 1 && date.getDate() === dn
 }
 
-export function DateInput({ value, onChange, placeholder = 'Date (optional)' }: Props) {
-  const theme = useTheme()
+// Web: native browser date picker
+function WebDateInput({ value, onChange, theme }: Props & { theme: ReturnType<typeof useTheme> }) {
+  return (
+    <input
+      type="date"
+      value={value}
+      onChange={(e: any) => onChange(e.target.value)}
+      style={{
+        width: '100%',
+        backgroundColor: theme.backgroundElement,
+        color: theme.text,
+        border: 'none',
+        borderRadius: 10,
+        padding: '10px 14px',
+        fontSize: 15,
+        outline: 'none',
+        boxSizing: 'border-box',
+        colorScheme: theme.background === '#000000' ? 'dark' : 'light',
+      } as any}
+    />
+  )
+}
+
+// Native: split MM / DD / YYYY fields
+function NativeDateInput({ value, onChange, theme }: Props & { theme: ReturnType<typeof useTheme> }) {
   const init = parseValue(value)
   const [m, setM] = useState(init.m)
   const [d, setD] = useState(init.d)
@@ -41,7 +63,6 @@ export function DateInput({ value, onChange, placeholder = 'Date (optional)' }: 
   const dayRef = useRef<TextInput>(null)
   const yearRef = useRef<TextInput>(null)
 
-  // Sync from external value changes (e.g. form reset or opening edit modal)
   useEffect(() => {
     if (value !== prevValue.current) {
       prevValue.current = value
@@ -55,14 +76,9 @@ export function DateInput({ value, onChange, placeholder = 'Date (optional)' }: 
   const valid = (!m && !d && !y) || isValid(y, m, d)
 
   function emit(newY: string, newM: string, newD: string) {
-    if (!newY && !newM && !newD) {
-      onChange('')
-      return
-    }
+    if (!newY && !newM && !newD) { onChange(''); return }
     if (newY.length === 4 && newM && newD) {
-      const mm = newM.padStart(2, '0')
-      const dd = newD.padStart(2, '0')
-      const built = `${newY}-${mm}-${dd}`
+      const built = `${newY}-${newM.padStart(2, '0')}-${newD.padStart(2, '0')}`
       prevValue.current = built
       onChange(built)
     }
@@ -94,47 +110,24 @@ export function DateInput({ value, onChange, placeholder = 'Date (optional)' }: 
     fontSize: 15, color: theme.text, textAlign: 'center' as const,
   }
 
-  const borderColor = !valid ? '#ef4444' : 'transparent'
-
   return (
     <View>
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: 6,
         backgroundColor: theme.backgroundElement, borderRadius: 10, padding: 6,
-        borderWidth: 1.5, borderColor,
+        borderWidth: 1.5, borderColor: !valid ? '#ef4444' : 'transparent',
       }}>
-        <TextInput
-          ref={monthRef}
-          value={m}
-          onChangeText={handleMonth}
-          placeholder="MM"
-          placeholderTextColor={theme.textSecondary}
-          keyboardType="number-pad"
-          maxLength={2}
-          style={{ ...inputStyle, width: 44 }}
-        />
+        <TextInput ref={monthRef} value={m} onChangeText={handleMonth} placeholder="MM"
+          placeholderTextColor={theme.textSecondary} keyboardType="number-pad" maxLength={2}
+          style={{ ...inputStyle, width: 44 }} />
         <Text style={{ color: theme.textSecondary, fontSize: 16 }}>/</Text>
-        <TextInput
-          ref={dayRef}
-          value={d}
-          onChangeText={handleDay}
-          placeholder="DD"
-          placeholderTextColor={theme.textSecondary}
-          keyboardType="number-pad"
-          maxLength={2}
-          style={{ ...inputStyle, width: 44 }}
-        />
+        <TextInput ref={dayRef} value={d} onChangeText={handleDay} placeholder="DD"
+          placeholderTextColor={theme.textSecondary} keyboardType="number-pad" maxLength={2}
+          style={{ ...inputStyle, width: 44 }} />
         <Text style={{ color: theme.textSecondary, fontSize: 16 }}>/</Text>
-        <TextInput
-          ref={yearRef}
-          value={y}
-          onChangeText={handleYear}
-          placeholder="YYYY"
-          placeholderTextColor={theme.textSecondary}
-          keyboardType="number-pad"
-          maxLength={4}
-          style={{ ...inputStyle, flex: 1 }}
-        />
+        <TextInput ref={yearRef} value={y} onChangeText={handleYear} placeholder="YYYY"
+          placeholderTextColor={theme.textSecondary} keyboardType="number-pad" maxLength={4}
+          style={{ ...inputStyle, flex: 1 }} />
       </View>
       {!valid && (
         <Text style={{ fontSize: 11, color: '#ef4444', marginTop: 4, paddingHorizontal: 2 }}>
@@ -143,4 +136,10 @@ export function DateInput({ value, onChange, placeholder = 'Date (optional)' }: 
       )}
     </View>
   )
+}
+
+export function DateInput(props: Props) {
+  const theme = useTheme()
+  if (Platform.OS === 'web') return <WebDateInput {...props} theme={theme} />
+  return <NativeDateInput {...props} theme={theme} />
 }
