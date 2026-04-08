@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
+import { getEncryptionKey, encryptField, decryptField, clearEncryptionKey } from '@/utils/finance-crypto'
 
 export type TransactionType = 'income' | 'expense'
 export type BudgetMode = 'percentage' | 'fixed'
@@ -32,6 +33,7 @@ type FinancesState = {
   budgetPercent: number
   budgetFixed: number
   userId: string | null
+  encryptionKey: CryptoKey | null
   init: (userId: string) => Promise<void>
   addTransaction: (title: string, amount: number, type: TransactionType, category: string, date: string) => void
   removeTransaction: (id: string) => void
@@ -41,6 +43,7 @@ type FinancesState = {
   updateRecurring: (id: string, title: string, amount: number, type: TransactionType, category: string, frequency: RecurringFrequency) => void
   applyDueRecurring: () => void
   setBudget: (monthlyIncome: number, mode: BudgetMode, percent: number, fixed: number) => void
+  signOut: () => void
 }
 
 function makeId(): string {
@@ -72,31 +75,55 @@ export const useFinancesStore = create<FinancesState>((set, get) => ({
   budgetPercent: 80,
   budgetFixed: 0,
   userId: null,
+  encryptionKey: null,
 
   init: async (userId) => {
     set({ userId })
+
+    // Derive encryption key for this user
+    let encKey: CryptoKey | null = null
+    try {
+      encKey = await getEncryptionKey(userId)
+      set({ encryptionKey: encKey })
+    } catch {
+      // Crypto not available — proceed without encryption
+    }
+
     const [txRes, rxRes, budgetRes] = await Promise.all([
       supabase.from('transactions').select('*').eq('user_id', userId),
       supabase.from('recurring_transactions').select('*').eq('user_id', userId),
       supabase.from('budget_settings').select('*').eq('user_id', userId).maybeSingle(),
     ])
-    const transactions: Transaction[] = (txRes.data ?? []).map((t) => ({
-      id: t.id,
-      title: t.title,
-      amount: t.amount,
-      type: t.type as TransactionType,
-      category: t.category ?? 'Other',
-      date: t.date,
-    }))
-    const recurringTransactions: RecurringTransaction[] = (rxRes.data ?? []).map((r) => ({
-      id: r.id,
-      title: r.title,
-      amount: r.amount,
-      type: r.type as TransactionType,
-      category: r.category ?? 'Other',
-      frequency: r.frequency as RecurringFrequency,
-      lastApplied: r.last_applied ?? '',
-    }))
+
+    // Decrypt titles if encryption key is available
+    const decryptTitle = async (raw: string): Promise<string> => {
+      if (!encKey) return raw
+      return decryptField(raw, encKey)
+    }
+
+    const transactions: Transaction[] = await Promise.all(
+      (txRes.data ?? []).map(async (t) => ({
+        id: t.id,
+        title: await decryptTitle(t.title),
+        amount: t.amount,
+        type: t.type as TransactionType,
+        category: t.category ?? 'Other',
+        date: t.date,
+      })),
+    )
+
+    const recurringTransactions: RecurringTransaction[] = await Promise.all(
+      (rxRes.data ?? []).map(async (r) => ({
+        id: r.id,
+        title: await decryptTitle(r.title),
+        amount: r.amount,
+        type: r.type as TransactionType,
+        category: r.category ?? 'Other',
+        frequency: r.frequency as RecurringFrequency,
+        lastApplied: r.last_applied ?? '',
+      })),
+    )
+
     const budget = budgetRes.data
     set({
       transactions,
@@ -111,11 +138,16 @@ export const useFinancesStore = create<FinancesState>((set, get) => ({
   },
 
   addTransaction: (title, amount, type, category, date) => {
-    const { userId } = get()
+    const { userId, encryptionKey } = get()
     const id = makeId()
+    // Optimistic update with plaintext
     set({ transactions: [...get().transactions, { id, title, amount, type, category, date }] })
     if (userId) {
-      supabase.from('transactions').insert({ id, user_id: userId, title, amount, type, category, date }).then()
+      const insert = async () => {
+        const encTitle = encryptionKey ? await encryptField(title, encryptionKey) : title
+        supabase.from('transactions').insert({ id, user_id: userId, title: encTitle, amount, type, category, date }).then()
+      }
+      insert()
     }
   },
 
@@ -126,20 +158,30 @@ export const useFinancesStore = create<FinancesState>((set, get) => ({
   },
 
   updateTransaction: (id, title, amount, type, category, date) => {
-    const { userId } = get()
+    const { userId, encryptionKey } = get()
     set({ transactions: get().transactions.map((t) => t.id === id ? { ...t, title, amount, type, category, date } : t) })
-    if (userId) supabase.from('transactions').update({ title, amount, type, category, date }).eq('id', id).then()
+    if (userId) {
+      const update = async () => {
+        const encTitle = encryptionKey ? await encryptField(title, encryptionKey) : title
+        supabase.from('transactions').update({ title: encTitle, amount, type, category, date }).eq('id', id).then()
+      }
+      update()
+    }
   },
 
   addRecurring: (title, amount, type, category, frequency) => {
-    const { userId } = get()
+    const { userId, encryptionKey } = get()
     const id = makeId()
     const r: RecurringTransaction = { id, title, amount, type, category, frequency, lastApplied: '' }
     set({ recurringTransactions: [...get().recurringTransactions, r] })
     if (userId) {
-      supabase.from('recurring_transactions').insert({
-        id, user_id: userId, title, amount, type, category, frequency, last_applied: '',
-      }).then()
+      const insert = async () => {
+        const encTitle = encryptionKey ? await encryptField(title, encryptionKey) : title
+        supabase.from('recurring_transactions').insert({
+          id, user_id: userId, title: encTitle, amount, type, category, frequency, last_applied: '',
+        }).then()
+      }
+      insert()
     }
   },
 
@@ -150,17 +192,23 @@ export const useFinancesStore = create<FinancesState>((set, get) => ({
   },
 
   updateRecurring: (id, title, amount, type, category, frequency) => {
-    const { userId } = get()
+    const { userId, encryptionKey } = get()
     set({
       recurringTransactions: get().recurringTransactions.map((r) =>
         r.id === id ? { ...r, title, amount, type, category, frequency } : r
       ),
     })
-    if (userId) supabase.from('recurring_transactions').update({ title, amount, type, category, frequency }).eq('id', id).then()
+    if (userId) {
+      const update = async () => {
+        const encTitle = encryptionKey ? await encryptField(title, encryptionKey) : title
+        supabase.from('recurring_transactions').update({ title: encTitle, amount, type, category, frequency }).eq('id', id).then()
+      }
+      update()
+    }
   },
 
   applyDueRecurring: () => {
-    const { userId } = get()
+    const { userId, encryptionKey } = get()
     const now = new Date()
     const monthKey = getMonthKey(now)
     const weekKey = getWeekKey(now)
@@ -186,15 +234,25 @@ export const useFinancesStore = create<FinancesState>((set, get) => ({
     set({ transactions: newTransactions, recurringTransactions: updatedRecurring })
 
     if (userId) {
-      if (toInsert.length > 0) {
-        supabase.from('transactions').insert(toInsert.map((t) => ({ ...t, user_id: userId }))).then()
-      }
-      for (const r of updatedRecurring) {
-        const orig = recurringTransactions.find((o) => o.id === r.id)
-        if (orig && orig.lastApplied !== r.lastApplied) {
-          supabase.from('recurring_transactions').update({ last_applied: r.lastApplied }).eq('id', r.id).then()
+      const insertAll = async () => {
+        if (toInsert.length > 0) {
+          const encRows = await Promise.all(
+            toInsert.map(async (t) => ({
+              ...t,
+              user_id: userId,
+              title: encryptionKey ? await encryptField(t.title, encryptionKey) : t.title,
+            })),
+          )
+          supabase.from('transactions').insert(encRows).then()
+        }
+        for (const r of updatedRecurring) {
+          const orig = recurringTransactions.find((o) => o.id === r.id)
+          if (orig && orig.lastApplied !== r.lastApplied) {
+            supabase.from('recurring_transactions').update({ last_applied: r.lastApplied }).eq('id', r.id).then()
+          }
         }
       }
+      insertAll()
     }
   },
 
@@ -210,5 +268,10 @@ export const useFinancesStore = create<FinancesState>((set, get) => ({
         budget_fixed: fixed,
       }).then()
     }
+  },
+
+  signOut: () => {
+    clearEncryptionKey()
+    set({ transactions: [], recurringTransactions: [], userId: null, encryptionKey: null })
   },
 }))

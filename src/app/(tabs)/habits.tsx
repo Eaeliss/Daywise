@@ -15,6 +15,7 @@ import { useTheme } from '@/hooks/use-theme'
 import { getStreak, useHabitsStore } from '@/stores/habits-store'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { hapticLight, hapticSuccess } from '@/utils/haptics'
+import { useT } from '@/utils/i18n'
 
 const DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
@@ -37,6 +38,7 @@ function getLast7Days(): string[] {
 
 export default function HabitsScreen() {
   const theme = useTheme()
+  const tr = useT()
   const { habits, completions, addHabit, renameHabit, removeHabit, toggleCompletion } = useHabitsStore()
 
   const HABIT_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#10b981']
@@ -116,7 +118,7 @@ export default function HabitsScreen() {
           }}>
             <Text style={{ fontSize: 16 }}>⚠️</Text>
             <Text style={{ fontSize: 13, color: '#f59e0b', flex: 1, fontWeight: '500' }}>
-              You missed {missedYesterday} habit{missedYesterday > 1 ? 's' : ''} yesterday. You can still log them below.
+              {missedYesterday} {tr('missedYesterday')}. You can still log them below.
             </Text>
           </View>
         )}
@@ -128,13 +130,13 @@ export default function HabitsScreen() {
             borderRadius: 16, padding: 20, marginBottom: 24,
           }}>
             <Text style={{ fontSize: 13, fontWeight: '500', color: theme.textSecondary, marginBottom: 4 }}>
-              Today's Progress
+              {tr('todayProgress')}
             </Text>
             <Text style={{ fontSize: 32, fontWeight: '700', color: theme.text, marginBottom: 2 }}>
               {completedToday}/{habits.length}
             </Text>
             <Text style={{ fontSize: 13, color: completedToday === habits.length ? '#22c55e' : theme.textSecondary }}>
-              {completedToday === habits.length ? 'All done!' : `${habits.length - completedToday} remaining`}
+              {completedToday === habits.length ? tr('allDone') : `${habits.length - completedToday} ${tr('remaining')}`}
             </Text>
             {/* Overall progress bar */}
             <View style={{ height: 6, backgroundColor: theme.backgroundSelected, borderRadius: 3, marginTop: 14 }}>
@@ -147,25 +149,30 @@ export default function HabitsScreen() {
           </View>
         )}
 
-        {/* Day labels */}
+        {/* Day labels — mirrors the habit row layout so columns align exactly */}
         {habits.length > 0 && (
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingRight: 4, marginBottom: 8, gap: 2 }}>
-            {last7.map((d, i) => (
-              <View key={d} style={{ width: 32, alignItems: 'center' }}>
-                <Text style={{
-                  fontSize: 11, color: d === today ? '#3b82f6' : theme.textSecondary,
-                  fontWeight: d === today ? '700' : '400',
-                }}>
-                  {DAYS[new Date(d + 'T00:00:00').getDay()]}
-                </Text>
-              </View>
-            ))}
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 8 }}>
+            <View style={{ flex: 1 }} />
+            <View style={{ flexDirection: 'row', gap: 2, marginRight: 12 }}>
+              {last7.map((d) => (
+                <View key={d} style={{ width: 32, alignItems: 'center' }}>
+                  <Text style={{
+                    fontSize: 11, color: d === today ? '#3b82f6' : theme.textSecondary,
+                    fontWeight: d === today ? '700' : '400',
+                  }}>
+                    {DAYS[new Date(d + 'T00:00:00').getDay()]}
+                  </Text>
+                </View>
+              ))}
+            </View>
+            {/* Spacer matching the × delete button width */}
+            <View style={{ width: 20 }} />
           </View>
         )}
 
         {/* Habit rows */}
         {habits.length === 0 ? (
-          <EmptyState emoji="✅" title="No habits yet" subtitle="Tap + to add your first daily habit." />
+          <EmptyState emoji="✅" title={tr('noHabitsYet')} subtitle={tr('addFirstHabit')} />
         ) : (
           <View style={{ backgroundColor: theme.backgroundElement, borderRadius: 12, overflow: 'hidden' }}>
             {habits.map((habit, i) => {
@@ -201,11 +208,11 @@ export default function HabitsScreen() {
                       onLongPress={() => openRename(habit.id, habit.title, habit.color)}
                       style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}
                     >
-                      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: habit.color }} />
-                      <View>
-                        <Text style={{ fontSize: 15, color: theme.text }}>{habit.title}</Text>
-                        <Text style={{ fontSize: 12, color: streak > 0 ? habit.color : theme.textSecondary, marginTop: 1 }}>
-                          {streak > 0 ? `🔥 ${streak} day streak` : 'No streak yet'}
+                      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: habit.color, flexShrink: 0 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text numberOfLines={1} style={{ fontSize: 15, color: theme.text }}>{habit.title}</Text>
+                        <Text numberOfLines={1} style={{ fontSize: 12, color: streak > 0 ? habit.color : theme.textSecondary, marginTop: 1 }}>
+                          {streak > 0 ? `🔥 ${streak} ${tr('dayStreak')}` : tr('noStreak')}
                         </Text>
                       </View>
                     </Pressable>
@@ -286,7 +293,7 @@ export default function HabitsScreen() {
               }}
             >
               <Text style={{ fontSize: 17, fontWeight: '600', color: theme.text, marginBottom: 16 }}>
-                New Habit
+                {tr('newHabit')}
               </Text>
               <TextInput
                 autoFocus
@@ -319,7 +326,7 @@ export default function HabitsScreen() {
                 onPress={handleAdd}
                 style={{ backgroundColor: selectedColor, borderRadius: 10, paddingVertical: 14, alignItems: 'center' }}
               >
-                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Add Habit</Text>
+                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>{tr('addHabit')}</Text>
               </Pressable>
             </View>
           </KeyboardAvoidingView>
@@ -343,7 +350,7 @@ export default function HabitsScreen() {
               style={{ backgroundColor: theme.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24 }}
             >
               <Text style={{ fontSize: 17, fontWeight: '600', color: theme.text, marginBottom: 16 }}>
-                Rename Habit
+                {tr('renameHabit')}
               </Text>
               <TextInput
                 autoFocus
@@ -374,7 +381,7 @@ export default function HabitsScreen() {
                 onPress={handleRename}
                 style={{ backgroundColor: renameColor, borderRadius: 10, paddingVertical: 14, alignItems: 'center' }}
               >
-                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Save</Text>
+                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>{tr('save')}</Text>
               </Pressable>
             </View>
           </KeyboardAvoidingView>

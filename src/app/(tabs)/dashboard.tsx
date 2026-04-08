@@ -12,11 +12,15 @@ import { formatShortDate, formatDayLabel } from '@/utils/format'
 import { useHabitsStore, getStreak } from '@/stores/habits-store'
 import { useSavingsStore } from '@/stores/savings-store'
 import { useNotesStore } from '@/stores/notes-store'
+import { DateInput } from '@/components/ui/DateInput'
+import { TimeInput } from '@/components/ui/TimeInput'
+import { useT } from '@/utils/i18n'
 
-function getGreeting(hour: number) {
-  if (hour < 12) return 'Good morning'
-  if (hour < 17) return 'Good afternoon'
-  return 'Good evening'
+type GreetingKey = 'greeting_morning' | 'greeting_afternoon' | 'greeting_evening'
+function getGreetingKey(hour: number): GreetingKey {
+  if (hour < 12) return 'greeting_morning'
+  if (hour < 17) return 'greeting_afternoon'
+  return 'greeting_evening'
 }
 
 const QUICK_ACTIONS = [
@@ -25,11 +29,13 @@ const QUICK_ACTIONS = [
   { label: 'Notes', route: '/(tabs)/notes' },
   { label: 'Calendar', route: '/(tabs)/calendar' },
   { label: 'Finances', route: '/(tabs)/finances' },
+  { label: 'School', route: '/(tabs)/school' },
   { label: 'Stats', route: '/(tabs)/stats' },
 ] as const
 
 export default function DashboardScreen() {
   const theme = useTheme()
+  const tr = useT()
   const user = useAuthStore((s) => s.user)
   const storedName = useOnboardingStore((s) => s.displayName)
   const { addTransaction } = useFinancesStore()
@@ -43,6 +49,8 @@ export default function DashboardScreen() {
   const [quickTitle, setQuickTitle] = useState('')
   const [quickAmount, setQuickAmount] = useState('')
   const [quickBody, setQuickBody] = useState('')
+  const [quickEventDate, setQuickEventDate] = useState('')
+  const [quickEventTime, setQuickEventTime] = useState('')
   const shakeAnim = useRef(new Animated.Value(0)).current
 
   function shakeButton() {
@@ -59,6 +67,8 @@ export default function DashboardScreen() {
     setQuickTitle('')
     setQuickAmount('')
     setQuickBody('')
+    setQuickEventDate('')
+    setQuickEventTime('')
   }
 
   function handleQuickAdd() {
@@ -78,7 +88,10 @@ export default function DashboardScreen() {
       addNote(quickTitle.trim(), quickBody.trim())
     } else if (quickTab === 'event') {
       if (!quickTitle.trim()) { shakeButton(); return }
-      addEvent(quickTitle.trim(), todayStr, '')
+      const eventDate = quickEventDate || todayStr
+      const time = quickEventTime.trim()
+      const validTime = /^\d{1,2}:\d{2}$/.test(time) ? time : ''
+      addEvent(quickTitle.trim(), eventDate, eventDate, validTime, 'none')
     } else if (quickTab === 'goal') {
       if (!quickTitle.trim()) { shakeButton(); return }
       addGoal(quickTitle.trim(), quickBody.trim(), '', 0)
@@ -97,7 +110,7 @@ export default function DashboardScreen() {
   const now = new Date()
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const todayLabel = formatDayLabel(now, language)
-  const greeting = getGreeting(now.getHours())
+  const greeting = tr(getGreetingKey(now.getHours()))
   const displayName = storedName || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'there'
 
   const fmt = useMemo(
@@ -195,7 +208,7 @@ export default function DashboardScreen() {
           }}
         >
           <Text style={{ fontSize: 12, fontWeight: '500', color: theme.textSecondary, marginBottom: 8 }}>
-            Goals
+            {tr('goals')}
           </Text>
           <Text style={{ fontSize: 28, fontWeight: '700', color: theme.text, marginBottom: 4 }}>
             {goalStats.active}
@@ -214,7 +227,7 @@ export default function DashboardScreen() {
           }}
         >
           <Text style={{ fontSize: 12, fontWeight: '500', color: theme.textSecondary, marginBottom: 8 }}>
-            Balance
+            {tr('balance')}
           </Text>
           <Text style={{
             fontSize: 28, fontWeight: '700', marginBottom: 4,
@@ -251,7 +264,7 @@ export default function DashboardScreen() {
               onPress={() => router.push('/(tabs)/habits')}
               style={{ flex: 1, backgroundColor: theme.backgroundElement, borderRadius: 16, padding: 16 }}
             >
-              <Text style={{ fontSize: 12, fontWeight: '500', color: theme.textSecondary, marginBottom: 8 }}>Habits</Text>
+              <Text style={{ fontSize: 12, fontWeight: '500', color: theme.textSecondary, marginBottom: 8 }}>{tr('habits')}</Text>
               <Text style={{ fontSize: 28, fontWeight: '700', color: theme.text, marginBottom: 4 }}>
                 {habitSummary.doneToday}/{habitSummary.total}
               </Text>
@@ -265,7 +278,7 @@ export default function DashboardScreen() {
               onPress={() => router.push('/(tabs)/finances')}
               style={{ flex: 1, backgroundColor: theme.backgroundElement, borderRadius: 16, padding: 16 }}
             >
-              <Text style={{ fontSize: 12, fontWeight: '500', color: theme.textSecondary, marginBottom: 8 }}>Saving for</Text>
+              <Text style={{ fontSize: 12, fontWeight: '500', color: theme.textSecondary, marginBottom: 8 }}>{tr('savingFor')}</Text>
               <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text, marginBottom: 8 }} numberOfLines={1}>
                 {topSavingsGoal.title}
               </Text>
@@ -297,7 +310,7 @@ export default function DashboardScreen() {
           >
             <View style={{ backgroundColor: theme.backgroundElement, borderRadius: 16, padding: 16 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
-                <Text style={{ fontSize: 12, fontWeight: '500', color: theme.textSecondary }}>Monthly Budget</Text>
+                <Text style={{ fontSize: 12, fontWeight: '500', color: theme.textSecondary }}>{tr('monthlyBudget')}</Text>
                 <Text style={{ fontSize: 12, fontWeight: '600', color: overBudget ? '#ef4444' : '#22c55e' }}>
                   {overBudget ? `Over by ${fmt.format(Math.abs(remaining))}` : `${fmt.format(remaining)} left`}
                 </Text>
@@ -328,7 +341,7 @@ export default function DashboardScreen() {
           >
             <View style={{ backgroundColor: theme.backgroundElement, borderRadius: 16, padding: 16 }}>
               <Text style={{ fontSize: 12, fontWeight: '500', color: theme.textSecondary, marginBottom: 8 }}>
-                Next Goal Deadline
+                {tr('nextGoalDeadline')}
               </Text>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={{ fontSize: 15, fontWeight: '600', color: theme.text, flex: 1, marginRight: 12 }} numberOfLines={1}>
@@ -356,9 +369,9 @@ export default function DashboardScreen() {
           flexDirection: 'row', alignItems: 'center',
           justifyContent: 'space-between', marginBottom: 12,
         }}>
-          <Text style={{ fontSize: 16, fontWeight: '600', color: theme.text }}>Today</Text>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: theme.text }}>{tr('today')}</Text>
           <Pressable onPress={() => router.push('/(tabs)/calendar')} hitSlop={8}>
-            <Text style={{ fontSize: 13, color: '#3b82f6' }}>View calendar</Text>
+            <Text style={{ fontSize: 13, color: '#3b82f6' }}>{tr('viewCalendar')}</Text>
           </Pressable>
         </View>
 
@@ -368,7 +381,7 @@ export default function DashboardScreen() {
               color: theme.textSecondary, padding: 16,
               textAlign: 'center', fontSize: 14,
             }}>
-              No events today
+              {tr('noEventsToday')}
             </Text>
           ) : (
             todayEvents.map((event, i) => (
@@ -393,7 +406,7 @@ export default function DashboardScreen() {
       {upcomingEvents.length > 0 && (
         <View style={{ paddingHorizontal: 20, marginBottom: 28 }}>
           <Text style={{ fontSize: 16, fontWeight: '600', color: theme.text, marginBottom: 12 }}>
-            Upcoming
+            {tr('upcoming')}
           </Text>
           <View style={{ backgroundColor: theme.backgroundElement, borderRadius: 12, overflow: 'hidden' }}>
             {upcomingEvents.map((event, i) => (
@@ -422,7 +435,7 @@ export default function DashboardScreen() {
       {/* Quick actions */}
       <View style={{ paddingHorizontal: 20 }}>
         <Text style={{ fontSize: 16, fontWeight: '600', color: theme.text, marginBottom: 12 }}>
-          Quick actions
+          {tr('quickActions')}
         </Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
           {QUICK_ACTIONS.map((action) => (
@@ -465,7 +478,7 @@ export default function DashboardScreen() {
             onStartShouldSetResponder={() => true} onClick={(e: any) => e.stopPropagation()}
             style={{ backgroundColor: theme.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24 }}
           >
-            <Text style={{ fontSize: 17, fontWeight: '600', color: theme.text, marginBottom: 16 }}>Quick Add</Text>
+            <Text style={{ fontSize: 17, fontWeight: '600', color: theme.text, marginBottom: 16 }}>{tr('quickAdd')}</Text>
             {/* Tab row 1: Expense / Habit / Note */}
             <View style={{ flexDirection: 'row', backgroundColor: theme.backgroundElement, borderRadius: 10, padding: 3, marginBottom: 6 }}>
               {(['transaction', 'habit', 'note'] as const).map((t) => (
@@ -511,6 +524,19 @@ export default function DashboardScreen() {
               onSubmitEditing={quickTab === 'habit' || quickTab === 'event' ? handleQuickAdd : undefined}
               style={{ backgroundColor: theme.backgroundElement, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: theme.text, marginBottom: 10 }}
             />
+
+            {/* Date + time fields — Event only */}
+            {quickTab === 'event' && (
+              <>
+                <View style={{ marginBottom: 10 }}>
+                  <Text style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 6 }}>Date (defaults to today)</Text>
+                  <DateInput value={quickEventDate} onChange={setQuickEventDate} />
+                </View>
+                <View style={{ marginBottom: 10 }}>
+                  <TimeInput value={quickEventTime} onChange={setQuickEventTime} />
+                </View>
+              </>
+            )}
 
             {/* Amount field — Expense only */}
             {quickTab === 'transaction' && (

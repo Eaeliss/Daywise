@@ -97,6 +97,14 @@ export default function TabsLayout() {
 
       {/* Hidden from tab bar — still navigable via router.push */}
       <Tabs.Screen
+        name="school"
+        options={{
+          href: null,
+          title: 'School',
+          headerLeft: () => <BackToDashboard color={theme.text} />,
+        }}
+      />
+      <Tabs.Screen
         name="notes"
         options={{
           href: null,

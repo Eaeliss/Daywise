@@ -11,12 +11,20 @@ import {
 } from 'react-native'
 import { useTheme } from '@/hooks/use-theme'
 import { TimeInput } from '@/components/ui/TimeInput'
-import { useCalendarStore } from '@/stores/calendar-store'
+import { DateInput } from '@/components/ui/DateInput'
+import { CalendarRepeat, eventCoversDate, useCalendarStore } from '@/stores/calendar-store'
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
+]
+
+const REPEAT_OPTIONS: { value: CalendarRepeat; label: string }[] = [
+  { value: 'none', label: 'None' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
 ]
 
 function toDateString(year: number, month: number, day: number) {
@@ -37,25 +45,34 @@ export default function CalendarScreen() {
   const [selected, setSelected] = useState(today)
   const [modalVisible, setModalVisible] = useState(false)
   const [newTitle, setNewTitle] = useState('')
+  const [newEndDate, setNewEndDate] = useState('')
   const [newTime, setNewTime] = useState('')
+  const [newRepeat, setNewRepeat] = useState<CalendarRepeat>('none')
 
-  const [editingEvent, setEditingEvent] = useState<{ id: string; title: string; time: string } | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
+  const [editEndDate, setEditEndDate] = useState('')
   const [editTime, setEditTime] = useState('')
+  const [editRepeat, setEditRepeat] = useState<CalendarRepeat>('none')
 
   const { events, addEvent, updateEvent, removeEvent } = useCalendarStore()
 
-  function openEdit(event: { id: string; title: string; time: string }) {
-    setEditingEvent(event)
+  function openEdit(event: { id: string; title: string; endDate: string; time: string; repeat: CalendarRepeat }) {
+    setEditingId(event.id)
     setEditTitle(event.title)
+    setEditEndDate(event.endDate !== event.id ? event.endDate : '')
     setEditTime(event.time)
+    setEditRepeat(event.repeat)
   }
 
   function handleEditSave() {
-    if (!editingEvent || !editTitle.trim()) return
+    if (!editingId || !editTitle.trim()) return
     const time = editTime.trim()
-    updateEvent(editingEvent.id, editTitle.trim(), /^\d{1,2}:\d{2}$/.test(time) ? time : '')
-    setEditingEvent(null)
+    const ev = events.find((e) => e.id === editingId)
+    if (!ev) return
+    const endDate = editEndDate && editEndDate >= ev.date ? editEndDate : ev.date
+    updateEvent(editingId, editTitle.trim(), endDate, /^\d{1,2}:\d{2}$/.test(time) ? time : '', editRepeat)
+    setEditingId(null)
   }
 
   // Build calendar grid: leading nulls + days 1..N + trailing nulls
@@ -70,8 +87,26 @@ export default function CalendarScreen() {
     return result
   }, [year, month])
 
-  const eventDates = useMemo(() => new Set(events.map((e) => e.date)), [events])
-  const dayEvents = useMemo(() => events.filter((e) => e.date === selected), [events, selected])
+  // Compute which dates in this month have events (including multi-day and repeat)
+  const eventDates = useMemo(() => {
+    const dates = new Set<string>()
+    const daysInMonth = new Date(year, month + 1, 0).getDate()
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = toDateString(year, month, day)
+      for (const event of events) {
+        if (eventCoversDate(event, dateStr)) {
+          dates.add(dateStr)
+          break
+        }
+      }
+    }
+    return dates
+  }, [events, year, month])
+
+  const dayEvents = useMemo(
+    () => events.filter((e) => eventCoversDate(e, selected)),
+    [events, selected],
+  )
 
   function prevMonth() {
     const newMonth = month === 0 ? 11 : month - 1
@@ -102,9 +137,12 @@ export default function CalendarScreen() {
     if (!newTitle.trim()) return
     const time = newTime.trim()
     const validTime = /^\d{1,2}:\d{2}$/.test(time) ? time : ''
-    addEvent(newTitle.trim(), selected, validTime)
+    const endDate = newEndDate && newEndDate >= selected ? newEndDate : selected
+    addEvent(newTitle.trim(), selected, endDate, validTime, newRepeat)
     setNewTitle('')
+    setNewEndDate('')
     setNewTime('')
+    setNewRepeat('none')
     setModalVisible(false)
   }
 
@@ -229,16 +267,31 @@ export default function CalendarScreen() {
               flexDirection: 'row', alignItems: 'center',
               borderBottomWidth: 1, borderBottomColor: theme.backgroundElement,
             }}>
-              <Pressable onPress={() => openEdit(event)} style={{
+              <Pressable onPress={() => openEdit({
+                id: event.id, title: event.title,
+                endDate: event.endDate, time: event.time, repeat: event.repeat,
+              })} style={{
                 flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
                 paddingVertical: 14,
               }}>
                 <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#3b82f6' }} />
-                <View>
+                <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 15, color: theme.text }}>{event.title}</Text>
-                  {event.time !== '' && (
-                    <Text style={{ fontSize: 12, color: theme.textSecondary, marginTop: 1 }}>{event.time}</Text>
-                  )}
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
+                    {event.time !== '' && (
+                      <Text style={{ fontSize: 12, color: theme.textSecondary }}>{event.time}</Text>
+                    )}
+                    {event.endDate !== event.date && (
+                      <Text style={{ fontSize: 12, color: '#3b82f6' }}>
+                        {event.date} → {event.endDate}
+                      </Text>
+                    )}
+                    {event.repeat !== 'none' && (
+                      <Text style={{ fontSize: 12, color: '#8b5cf6' }}>
+                        🔁 {event.repeat}
+                      </Text>
+                    )}
+                  </View>
                 </View>
               </Pressable>
               <Pressable onPress={() => removeEvent(event.id)} hitSlop={8} style={{ paddingVertical: 14, paddingLeft: 8 }}>
@@ -283,37 +336,64 @@ export default function CalendarScreen() {
                 padding: 24,
               }}
             >
-              <Text style={{ fontSize: 17, fontWeight: '600', color: theme.text, marginBottom: 4 }}>
-                New Event
-              </Text>
-              <Text style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 16 }}>
-                {formattedSelectedDate}
-              </Text>
-              <TextInput
-                autoFocus
-                value={newTitle}
-                onChangeText={setNewTitle}
-                placeholder="Event title"
-                placeholderTextColor={theme.textSecondary}
-                returnKeyType="next"
-                style={{
-                  backgroundColor: theme.backgroundElement,
-                  borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12,
-                  fontSize: 15, color: theme.text, marginBottom: 10,
-                }}
-              />
-              <View style={{ marginBottom: 16 }}>
-                <TimeInput value={newTime} onChange={setNewTime} />
-              </View>
-              <Pressable
-                onPress={handleAddEvent}
-                style={{
-                  backgroundColor: '#3b82f6', borderRadius: 10,
-                  paddingVertical: 14, alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Add Event</Text>
-              </Pressable>
+              <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                <Text style={{ fontSize: 17, fontWeight: '600', color: theme.text, marginBottom: 4 }}>
+                  New Event
+                </Text>
+                <Text style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 16 }}>
+                  {formattedSelectedDate}
+                </Text>
+                <TextInput
+                  autoFocus
+                  value={newTitle}
+                  onChangeText={setNewTitle}
+                  placeholder="Event title"
+                  placeholderTextColor={theme.textSecondary}
+                  returnKeyType="next"
+                  style={{
+                    backgroundColor: theme.backgroundElement,
+                    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12,
+                    fontSize: 15, color: theme.text, marginBottom: 10,
+                  }}
+                />
+                <Text style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 6 }}>Time</Text>
+                <View style={{ marginBottom: 14 }}>
+                  <TimeInput value={newTime} onChange={setNewTime} />
+                </View>
+                <Text style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 6 }}>End date (optional)</Text>
+                <View style={{ marginBottom: 14 }}>
+                  <DateInput value={newEndDate} onChange={setNewEndDate} />
+                </View>
+                <Text style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 8 }}>Repeat</Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                  {REPEAT_OPTIONS.map((opt) => (
+                    <Pressable
+                      key={opt.value}
+                      onPress={() => setNewRepeat(opt.value)}
+                      style={{
+                        flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center',
+                        backgroundColor: newRepeat === opt.value ? '#3b82f6' : theme.backgroundElement,
+                      }}
+                    >
+                      <Text style={{
+                        fontSize: 12, fontWeight: '600',
+                        color: newRepeat === opt.value ? '#fff' : theme.textSecondary,
+                      }}>
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Pressable
+                  onPress={handleAddEvent}
+                  style={{
+                    backgroundColor: '#3b82f6', borderRadius: 10,
+                    paddingVertical: 14, alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Add Event</Text>
+                </Pressable>
+              </ScrollView>
             </View>
           </KeyboardAvoidingView>
         </Pressable>
@@ -321,45 +401,72 @@ export default function CalendarScreen() {
 
       {/* Edit event modal */}
       <Modal
-        visible={editingEvent !== null}
+        visible={editingId !== null}
         transparent
         animationType="fade"
-        onRequestClose={() => setEditingEvent(null)}
+        onRequestClose={() => setEditingId(null)}
       >
         <Pressable
           style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}
-          onPress={() => setEditingEvent(null)}
+          onPress={() => setEditingId(null)}
         >
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
             <View
               onStartShouldSetResponder={() => true} onClick={(e: any) => e.stopPropagation()}
               style={{ backgroundColor: theme.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24 }}
             >
-              <Text style={{ fontSize: 17, fontWeight: '600', color: theme.text, marginBottom: 16 }}>
-                Edit Event
-              </Text>
-              <TextInput
-                autoFocus
-                value={editTitle}
-                onChangeText={setEditTitle}
-                placeholder="Event title"
-                placeholderTextColor={theme.textSecondary}
-                returnKeyType="next"
-                style={{
-                  backgroundColor: theme.backgroundElement,
-                  borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12,
-                  fontSize: 15, color: theme.text, marginBottom: 10,
-                }}
-              />
-              <View style={{ marginBottom: 16 }}>
-                <TimeInput value={editTime} onChange={setEditTime} />
-              </View>
-              <Pressable
-                onPress={handleEditSave}
-                style={{ backgroundColor: '#3b82f6', borderRadius: 10, paddingVertical: 14, alignItems: 'center' }}
-              >
-                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Save</Text>
-              </Pressable>
+              <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                <Text style={{ fontSize: 17, fontWeight: '600', color: theme.text, marginBottom: 16 }}>
+                  Edit Event
+                </Text>
+                <TextInput
+                  autoFocus
+                  value={editTitle}
+                  onChangeText={setEditTitle}
+                  placeholder="Event title"
+                  placeholderTextColor={theme.textSecondary}
+                  returnKeyType="next"
+                  style={{
+                    backgroundColor: theme.backgroundElement,
+                    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12,
+                    fontSize: 15, color: theme.text, marginBottom: 10,
+                  }}
+                />
+                <Text style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 6 }}>Time</Text>
+                <View style={{ marginBottom: 14 }}>
+                  <TimeInput value={editTime} onChange={setEditTime} />
+                </View>
+                <Text style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 6 }}>End date (optional)</Text>
+                <View style={{ marginBottom: 14 }}>
+                  <DateInput value={editEndDate} onChange={setEditEndDate} />
+                </View>
+                <Text style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 8 }}>Repeat</Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                  {REPEAT_OPTIONS.map((opt) => (
+                    <Pressable
+                      key={opt.value}
+                      onPress={() => setEditRepeat(opt.value)}
+                      style={{
+                        flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center',
+                        backgroundColor: editRepeat === opt.value ? '#3b82f6' : theme.backgroundElement,
+                      }}
+                    >
+                      <Text style={{
+                        fontSize: 12, fontWeight: '600',
+                        color: editRepeat === opt.value ? '#fff' : theme.textSecondary,
+                      }}>
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Pressable
+                  onPress={handleEditSave}
+                  style={{ backgroundColor: '#3b82f6', borderRadius: 10, paddingVertical: 14, alignItems: 'center' }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Save</Text>
+                </Pressable>
+              </ScrollView>
             </View>
           </KeyboardAvoidingView>
         </Pressable>
