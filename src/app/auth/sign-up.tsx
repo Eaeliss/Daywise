@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, Te
 import { router } from 'expo-router'
 import { supabase } from '@/lib/supabase'
 import { isValidEmail } from '@/lib/validation'
+import { useGoogleSignIn } from '@/hooks/use-google-sign-in'
 import { useTheme } from '@/hooks/use-theme'
 
 export default function SignUpScreen() {
@@ -10,6 +11,7 @@ export default function SignUpScreen() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const { signInWithGoogle, loading: googleLoading } = useGoogleSignIn()
 
   async function handleRegister() {
     if (!isValidEmail(email)) {
@@ -84,12 +86,26 @@ export default function SignUpScreen() {
         <Pressable
           onPress={handleRegister}
           disabled={loading}
-          style={{ backgroundColor: '#3b82f6', borderRadius: 10, paddingVertical: 14, alignItems: 'center', marginBottom: 20, opacity: loading ? 0.6 : 1 }}
+          style={{ backgroundColor: '#3b82f6', borderRadius: 10, paddingVertical: 14, alignItems: 'center', marginBottom: 12, opacity: loading ? 0.6 : 1 }}
           testID="register-button"
         >
           {loading
             ? <ActivityIndicator color="#fff" />
             : <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Register</Text>
+          }
+        </Pressable>
+
+        <Text style={{ textAlign: 'center', color: theme.textSecondary, marginVertical: 12 }}>or</Text>
+
+        <Pressable
+          onPress={signInWithGoogle}
+          disabled={googleLoading}
+          style={{ borderWidth: 1.5, borderColor: '#3b82f6', borderRadius: 10, paddingVertical: 13, alignItems: 'center', marginBottom: 20, opacity: googleLoading ? 0.6 : 1 }}
+          testID="google-sign-up-button"
+        >
+          {googleLoading
+            ? <ActivityIndicator color="#3b82f6" />
+            : <Text style={{ color: '#3b82f6', fontWeight: '600', fontSize: 15 }}>Sign up with Google</Text>
           }
         </Pressable>
 
