@@ -17,6 +17,7 @@ type GoalsState = {
   goals: Goal[]
   userId: string | null
   init: (userId: string) => Promise<void>
+  reset: () => void
   addGoal: (title: string, description: string, targetDate: string, progressTarget: number) => string
   updateGoal: (id: string, title: string, description: string, targetDate: string) => void
   toggleGoal: (id: string) => void
@@ -54,6 +55,8 @@ function syncGoal(userId: string, goal: Goal) {
 export const useGoalsStore = create<GoalsState>((set, get) => ({
   goals: [],
   userId: null,
+
+  reset: () => set({ goals: [], userId: null }),
 
   init: async (userId) => {
     set({ userId })

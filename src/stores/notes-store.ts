@@ -14,6 +14,7 @@ type NotesState = {
   notes: Note[]
   userId: string | null
   init: (userId: string) => Promise<void>
+  reset: () => void
   addNote: (title: string, body: string) => string
   updateNote: (id: string, title: string, body: string) => void
   updateTags: (id: string, tags: string[]) => void
@@ -28,6 +29,8 @@ function getToday() {
 export const useNotesStore = create<NotesState>((set, get) => ({
   notes: [],
   userId: null,
+
+  reset: () => set({ notes: [], userId: null }),
 
   init: async (userId) => {
     set({ userId })

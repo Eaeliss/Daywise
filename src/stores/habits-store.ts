@@ -15,6 +15,7 @@ type HabitsState = {
   completions: Record<string, string[]>
   userId: string | null
   init: (userId: string) => Promise<void>
+  reset: () => void
   addHabit: (title: string, color?: string) => void
   renameHabit: (id: string, title: string, color?: string) => void
   removeHabit: (id: string) => void
@@ -43,6 +44,8 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
   habits: [],
   completions: {},
   userId: null,
+
+  reset: () => set({ habits: [], completions: {}, userId: null }),
 
   init: async (userId) => {
     set({ userId })

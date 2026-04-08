@@ -51,6 +51,8 @@ export default function DashboardScreen() {
   const [quickBody, setQuickBody] = useState('')
   const [quickEventDate, setQuickEventDate] = useState('')
   const [quickEventTime, setQuickEventTime] = useState('')
+  const [quickTransactionDate, setQuickTransactionDate] = useState('')
+  const [quickGoalDate, setQuickGoalDate] = useState('')
   const shakeAnim = useRef(new Animated.Value(0)).current
 
   function shakeButton() {
@@ -69,6 +71,8 @@ export default function DashboardScreen() {
     setQuickBody('')
     setQuickEventDate('')
     setQuickEventTime('')
+    setQuickTransactionDate('')
+    setQuickGoalDate('')
   }
 
   function handleQuickAdd() {
@@ -79,7 +83,7 @@ export default function DashboardScreen() {
       if (!quickTitle.trim()) { shakeButton(); return }
       const amt = parseFloat(quickAmount.replace(',', '.'))
       if (isNaN(amt) || amt <= 0) { shakeButton(); return }
-      addTransaction(quickTitle.trim(), amt, 'expense', 'Other', todayStr)
+      addTransaction(quickTitle.trim(), amt, 'expense', 'Other', quickTransactionDate || todayStr)
     } else if (quickTab === 'habit') {
       if (!quickTitle.trim()) { shakeButton(); return }
       addHabit(quickTitle.trim())
@@ -94,7 +98,7 @@ export default function DashboardScreen() {
       addEvent(quickTitle.trim(), eventDate, eventDate, validTime, 'none')
     } else if (quickTab === 'goal') {
       if (!quickTitle.trim()) { shakeButton(); return }
-      addGoal(quickTitle.trim(), quickBody.trim(), '', 0)
+      addGoal(quickTitle.trim(), quickBody.trim(), quickGoalDate, 0)
     }
     resetQuickFields()
     setQuickModal(false)
@@ -476,7 +480,7 @@ export default function DashboardScreen() {
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View
             onStartShouldSetResponder={() => true} onClick={(e: any) => e.stopPropagation()}
-            style={{ backgroundColor: theme.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24 }}
+            style={{ backgroundColor: theme.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, maxHeight: '90%' }}
           >
             <Text style={{ fontSize: 17, fontWeight: '600', color: theme.text, marginBottom: 16 }}>{tr('quickAdd')}</Text>
             {/* Tab row 1: Expense / Habit / Note */}
@@ -508,68 +512,92 @@ export default function DashboardScreen() {
               ))}
             </View>
 
-            {/* Title / name field */}
-            <TextInput
-              autoFocus
-              value={quickTitle}
-              onChangeText={setQuickTitle}
-              placeholder={
-                quickTab === 'transaction' ? 'Description' :
-                quickTab === 'habit' ? 'Habit name' :
-                quickTab === 'note' ? 'Note title (optional)' :
-                quickTab === 'event' ? 'Event title' : 'Goal title'
-              }
-              placeholderTextColor={theme.textSecondary}
-              returnKeyType={quickTab === 'habit' || quickTab === 'event' ? 'done' : 'next'}
-              onSubmitEditing={quickTab === 'habit' || quickTab === 'event' ? handleQuickAdd : undefined}
-              style={{ backgroundColor: theme.backgroundElement, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: theme.text, marginBottom: 10 }}
-            />
-
-            {/* Date + time fields — Event only */}
-            {quickTab === 'event' && (
-              <>
-                <View style={{ marginBottom: 10 }}>
-                  <Text style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 6 }}>Date (defaults to today)</Text>
-                  <DateInput value={quickEventDate} onChange={setQuickEventDate} />
-                </View>
-                <View style={{ marginBottom: 10 }}>
-                  <TimeInput value={quickEventTime} onChange={setQuickEventTime} />
-                </View>
-              </>
-            )}
-
-            {/* Amount field — Expense only */}
-            {quickTab === 'transaction' && (
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              {/* Title / name field */}
               <TextInput
-                value={quickAmount}
-                onChangeText={setQuickAmount}
-                placeholder="Amount"
+                autoFocus
+                value={quickTitle}
+                onChangeText={setQuickTitle}
+                placeholder={
+                  quickTab === 'transaction' ? 'Description' :
+                  quickTab === 'habit' ? 'Habit name' :
+                  quickTab === 'note' ? 'Note title (optional)' :
+                  quickTab === 'event' ? 'Event title' : 'Goal title'
+                }
                 placeholderTextColor={theme.textSecondary}
-                keyboardType="decimal-pad"
-                returnKeyType="done"
-                onSubmitEditing={handleQuickAdd}
+                returnKeyType="next"
                 style={{ backgroundColor: theme.backgroundElement, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: theme.text, marginBottom: 10 }}
               />
-            )}
 
-            {/* Body field — Note / Goal */}
-            {(quickTab === 'note' || quickTab === 'goal') && (
-              <TextInput
-                value={quickBody}
-                onChangeText={setQuickBody}
-                placeholder={quickTab === 'note' ? 'Write something...' : 'Description (optional)'}
-                placeholderTextColor={theme.textSecondary}
-                multiline
-                returnKeyType="done"
-                style={{ backgroundColor: theme.backgroundElement, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: theme.text, marginBottom: 10, minHeight: 72, textAlignVertical: 'top' }}
-              />
-            )}
+              {/* Amount + date — Expense */}
+              {quickTab === 'transaction' && (
+                <>
+                  <TextInput
+                    value={quickAmount}
+                    onChangeText={setQuickAmount}
+                    placeholder="Amount"
+                    placeholderTextColor={theme.textSecondary}
+                    keyboardType="decimal-pad"
+                    returnKeyType="done"
+                    onSubmitEditing={handleQuickAdd}
+                    style={{ backgroundColor: theme.backgroundElement, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: theme.text, marginBottom: 10 }}
+                  />
+                  <Text style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 6 }}>Date (defaults to today)</Text>
+                  <View style={{ marginBottom: 10 }}>
+                    <DateInput value={quickTransactionDate} onChange={setQuickTransactionDate} />
+                  </View>
+                </>
+              )}
 
-            <Animated.View style={{ transform: [{ translateX: shakeAnim }] }}>
-              <Pressable onPress={handleQuickAdd} style={{ backgroundColor: '#3b82f6', borderRadius: 10, paddingVertical: 14, alignItems: 'center', marginTop: 6 }}>
-                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Add</Text>
-              </Pressable>
-            </Animated.View>
+              {/* Date + time — Event */}
+              {quickTab === 'event' && (
+                <>
+                  <Text style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 6 }}>Date (defaults to today)</Text>
+                  <View style={{ marginBottom: 10 }}>
+                    <DateInput value={quickEventDate} onChange={setQuickEventDate} />
+                  </View>
+                  <View style={{ marginBottom: 10 }}>
+                    <TimeInput value={quickEventTime} onChange={setQuickEventTime} />
+                  </View>
+                </>
+              )}
+
+              {/* Description + deadline — Goal */}
+              {quickTab === 'goal' && (
+                <>
+                  <TextInput
+                    value={quickBody}
+                    onChangeText={setQuickBody}
+                    placeholder="Description (optional)"
+                    placeholderTextColor={theme.textSecondary}
+                    multiline
+                    style={{ backgroundColor: theme.backgroundElement, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: theme.text, marginBottom: 10, minHeight: 72, textAlignVertical: 'top' }}
+                  />
+                  <Text style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 6 }}>Deadline (optional)</Text>
+                  <View style={{ marginBottom: 10 }}>
+                    <DateInput value={quickGoalDate} onChange={setQuickGoalDate} />
+                  </View>
+                </>
+              )}
+
+              {/* Body — Note only */}
+              {quickTab === 'note' && (
+                <TextInput
+                  value={quickBody}
+                  onChangeText={setQuickBody}
+                  placeholder="Write something..."
+                  placeholderTextColor={theme.textSecondary}
+                  multiline
+                  style={{ backgroundColor: theme.backgroundElement, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: theme.text, marginBottom: 10, minHeight: 72, textAlignVertical: 'top' }}
+                />
+              )}
+
+              <Animated.View style={{ transform: [{ translateX: shakeAnim }] }}>
+                <Pressable onPress={handleQuickAdd} style={{ backgroundColor: '#3b82f6', borderRadius: 10, paddingVertical: 14, alignItems: 'center', marginTop: 6 }}>
+                  <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Add</Text>
+                </Pressable>
+              </Animated.View>
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Pressable>

@@ -16,6 +16,7 @@ type CalendarState = {
   events: CalendarEvent[]
   userId: string | null
   init: (userId: string) => Promise<void>
+  reset: () => void
   addEvent: (title: string, date: string, endDate: string, time: string, repeat: CalendarRepeat) => void
   updateEvent: (id: string, title: string, endDate: string, time: string, repeat: CalendarRepeat) => void
   removeEvent: (id: string) => void
@@ -51,6 +52,8 @@ export function eventCoversDate(event: CalendarEvent, dateStr: string): boolean 
 export const useCalendarStore = create<CalendarState>((set, get) => ({
   events: [],
   userId: null,
+
+  reset: () => set({ events: [], userId: null }),
 
   init: async (userId) => {
     set({ userId })

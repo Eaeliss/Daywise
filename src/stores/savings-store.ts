@@ -16,6 +16,7 @@ type SavingsState = {
   goals: SavingsGoal[]
   userId: string | null
   init: (userId: string) => Promise<void>
+  reset: () => void
   addGoal: (title: string, targetAmount: number, deadline: string) => void
   updateGoal: (id: string, title: string, targetAmount: number, deadline: string) => void
   removeGoal: (id: string) => void
@@ -25,6 +26,8 @@ type SavingsState = {
 export const useSavingsStore = create<SavingsState>((set, get) => ({
   goals: [],
   userId: null,
+
+  reset: () => set({ goals: [], userId: null }),
 
   init: async (userId) => {
     set({ userId })
